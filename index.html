@@ -431,7 +431,7 @@
       let rolePlayers = displayPlayers.filter(p => p.role === role);
       html += `
         <div class="role-column col-${role}">
-          <h2 class="role-header">${role}s <span>${rolePlayers.length}</span></h2>
+          <h2 class="role-header">${role} <span>${rolePlayers.length}</span></h2>
           <div class="role-items">
             ${rolePlayers.map(p => {
               const iconUrl = p.isRolling ? unknownIcon : `${iconBase}${p.icon}.jpg`;
