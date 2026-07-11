@@ -1,1 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WoW Raid Comp Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
+<style>
+  body { font-family: Arial, sans-serif; background-color: #1a1a1a; color: #f0f0f0; padding: 20px; margin: 0; }
+  .container { max-width: 1200px; margin: auto; background: #242424; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+  h1 { text-align: center; color: #ffcc00; margin-bottom: 5px; }
+  p.subtitle { text-align: center; color: #aaa; font-size: 0.9em; margin-top: 0; margin-bottom: 20px; }
+  
+  .form-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; align-items: center; }
+  input[type="text"], select, button { padding: 10px; border-radius: 4px; border: 1px solid #444; font-size: 16px; background: #333; color: white; }
+  input[type="text"]:focus, select:focus { outline: none; border-color: #ff9900; }
+  button { background-color: #ff9900; color: #111; cursor: pointer; font-weight: bold; border: none; transition: background 0.2s; }
+  button:hover { background-color: #cc7a00; }
+  button:disabled { background-color: #555; color: #888; cursor: not-allowed; }
+  
+  .checkbox-group { display: flex; align-items: center; gap: 5px; background: #333; padding: 10px 15px; border-radius: 4px; border: 1px solid #444; cursor: pointer; user-select: none; }
+  .checkbox-group input { width: 18px; height: 18px; cursor: pointer; }
+
+  .player-list { margin-bottom: 30px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .player-badge { background: #333; padding: 5px 10px 5px 15px; border-radius: 20px; display: flex; align-items: center; gap: 10px; font-size: 0.9em; border: 1px solid #555; }
+  .delete-btn { background: #ff4444; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; font-size: 12px; font-weight: bold; padding: 0;}
+  .delete-btn:hover { background: #cc0000; }
+  
+  .generate-btn-container { text-align: center; margin-bottom: 30px; }
+  .generate-btn-container button { width: 100%; max-width: 400px; font-size: 1.2em; padding: 15px; }
+
+  /* 4-Column Grid Layout */
+  .roles-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 15px; }
+  .role-column { background: #1e1e1e; border-radius: 6px; padding: 15px; border: 1px solid #333; }
+  .role-header { text-align: center; margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #444; font-size: 1.2em; display: flex; justify-content: space-between; align-items: center;}
+  
+  .col-Tank .role-header { color: #60a5fa; border-color: #60a5fa; }
+  .col-Healer .role-header { color: #4ade80; border-color: #4ade80; }
+  .col-Melee .role-header { color: #f87171; border-color: #f87171; }
+  .col-Ranged .role-header { color: #c084fc; border-color: #c084fc; }
+
+  .result-item { display: flex; align-items: center; gap: 12px; padding: 8px; margin-top: 10px; background: #2a2a2a; border-left: 4px solid #fff; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+  .result-item.revealed { animation: pop 0.4s ease-out forwards; }
+  @keyframes pop { 0% { transform: scale(0.95); background: #444; } 50% { transform: scale(1.02); } 100% { transform: scale(1); background: #2a2a2a; } }
+
+  .spec-icon { width: 36px; height: 36px; border-radius: 4px; border: 1px solid #111; background: #111; }
+  .player-info { display: flex; flex-direction: column; }
+  .player-name { font-weight: bold; font-size: 1em; }
+  .player-spec { font-size: 0.8em; color: #ccc; }
+
+  .result-item.rolling { border-left-color: #ff9900; opacity: 0.8; }
+  .result-item.rolling .spec-icon { animation: spin 0.6s linear infinite; }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+
+  /* SPLASH SCREEN OVERLAY */
+  #splashOverlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.9); z-index: 1000;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; text-align: center;
+  }
+  #splashContent {
+    background: #1e1e1e; padding: 50px 80px; border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8); border: 3px solid #444;
+    display: flex; flex-direction: column; align-items: center;
+    transition: all 0.2s;
+  }
+  #splashPlayerName { font-size: 3em; margin: 0 0 20px 0; font-weight: bold; }
+  #splashIcon { width: 128px; height: 128px; border-radius: 12px; border: 2px solid #111; box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 20px; }
+  #splashSpec { font-size: 2em; color: #ccc; font-weight: bold; }
+  
+  .splash-rolling #splashIcon { animation: spin 0.5s linear infinite; }
+  .splash-reveal { animation: splashPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+  @keyframes splashPop {
+    0% { transform: scale(0.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @media (max-width: 900px) { .roles-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .roles-grid { grid-template-columns: 1fr; } #splashContent { padding: 30px; } #splashPlayerName { font-size: 2em;} #splashIcon { width: 96px; height: 96px; } }
+
+  /* Class Colors */
+  .Warrior { border-color: #C69B6D; } .Paladin { border-color: #F48CBA; } .Hunter { border-color: #ABD473; }
+  .Rogue { border-color: #FFF468; } .Priest { border-color: #FFFFFF; } .DeathKnight { border-color: #C41E3A; }
+  .Shaman { border-color: #0070DE; } .Mage { border-color: #3FC7EB; } .Warlock { border-color: #8788EE; }
+  .Monk { border-color: #00FF98; } .Druid { border-color: #FF7C0A; } .DemonHunter { border-color: #A330C9; }
+  .Evoker { border-color: #33937F; }
+  
+  .text-Warrior { color: #C69B6D; } .text-Paladin { color: #F48CBA; } .text-Hunter { color: #ABD473; }
+  .text-Rogue { color: #FFF468; } .text-Priest { color: #FFFFFF; } .text-DeathKnight { color: #C41E3A; }
+  .text-Shaman { color: #0070DE; } .text-Mage { color: #3FC7EB; } .text-Warlock { color: #8788EE; }
+  .text-Monk { color: #00FF98; } .text-Druid { color: #FF7C0A; } .text-DemonHunter { color: #A330C9; }
+  .text-Evoker { color: #33937F; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Raid Comp Generator</h1>
+  <p class="subtitle">A semi-balanced way to generate your raid composition.</p>
+  
+  <div class="form-group">
+    <input type="text" id="playerName" placeholder="Enter Player Name" required onkeypress="handleEnter(event)">
+    <select id="playerRole">
+      <option value="Any">Any Role</option>
+      <option value="Tank">Tank</option>
+      <option value="Healer">Healer</option>
+      <option value="Melee">Melee DPS</option>
+      <option value="Ranged">Ranged DPS</option>
+    </select>
+    <button onclick="addPlayer()" id="addBtn">Add Player</button>
+    <button onclick="clearPlayers()" style="background-color: #ff4444; color: white;">Clear All</button>
+    
+    <label class="checkbox-group">
+      <input type="checkbox" id="fastRoll"> Fast Roll (Skip Splash)
+    </label>
+  </div>
+
+  <div class="player-list" id="playerList"></div>
+  
+  <div class="generate-btn-container">
+    <button onclick="generateComp()" id="rollBtn">Roll Comp!</button>
+  </div>
+  
+  <div class="roles-grid" id="results">
+    <!-- Columns injected via JS -->
+  </div>
+</div>
+
+<!-- Splash Modal -->
+<div id="splashOverlay">
+  <div id="splashContent">
+    <h2 id="splashPlayerName">Player Name</h2>
+    <img id="splashIcon" src="" alt="Spec">
+    <div id="splashSpec">Rolling...</div>
+  </div>
+</div>
+
+<script>
+  const iconBase = "./icons/";
+  const unknownIcon = "./icons/inv_misc_questionmark.jpg";
+  
+  const allSpecs = [
+    { class: 'Warrior', spec: 'Protection', role: 'Tank', icon: 'ability_warrior_defensivestance' }, 
+    { class: 'Warrior', spec: 'Arms', role: 'Melee', icon: 'ability_warrior_savageblow' }, 
+    { class: 'Warrior', spec: 'Fury', role: 'Melee', icon: 'ability_warrior_innerrage' },
+    { class: 'Paladin', spec: 'Protection', role: 'Tank', icon: 'spell_holy_devotionaura' }, 
+    { class: 'Paladin', spec: 'Holy', role: 'Healer', icon: 'spell_holy_holybolt' }, 
+    { class: 'Paladin', spec: 'Retribution', role: 'Melee', icon: 'spell_holy_auraoflight' },
+    { class: 'Hunter', spec: 'Beast Mastery', role: 'Ranged', icon: 'ability_hunter_bestialdiscipline' }, 
+    { class: 'Hunter', spec: 'Marksmanship', role: 'Ranged', icon: 'ability_hunter_focusedaim' }, 
+    { class: 'Hunter', spec: 'Survival', role: 'Melee', icon: 'ability_hunter_camouflage' },
+    { class: 'Rogue', spec: 'Assassination', role: 'Melee', icon: 'ability_rogue_eviscerate' }, 
+    { class: 'Rogue', spec: 'Outlaw', role: 'Melee', icon: 'inv_sword_30' }, 
+    { class: 'Rogue', spec: 'Subtlety', role: 'Melee', icon: 'ability_stealth' },
+    { class: 'Priest', spec: 'Discipline', role: 'Healer', icon: 'spell_holy_powerwordshield' }, 
+    { class: 'Priest', spec: 'Holy', role: 'Healer', icon: 'spell_holy_guardianspirit' }, 
+    { class: 'Priest', spec: 'Shadow', role: 'Ranged', icon: 'spell_shadow_shadowwordpain' },
+    { class: 'DeathKnight', spec: 'Blood', role: 'Tank', icon: 'spell_deathknight_bloodpresence' }, 
+    { class: 'DeathKnight', spec: 'Frost', role: 'Melee', icon: 'spell_deathknight_frostpresence' }, 
+    { class: 'DeathKnight', spec: 'Unholy', role: 'Melee', icon: 'spell_deathknight_unholypresence' },
+    { class: 'Shaman', spec: 'Restoration', role: 'Healer', icon: 'spell_nature_magicimmunity' }, 
+    { class: 'Shaman', spec: 'Elemental', role: 'Ranged', icon: 'spell_nature_lightning' }, 
+    { class: 'Shaman', spec: 'Enhancement', role: 'Melee', icon: 'spell_shaman_improvedstormstrike' },
+    { class: 'Mage', spec: 'Arcane', role: 'Ranged', icon: 'spell_holy_magicalsentry' }, 
+    { class: 'Mage', spec: 'Fire', role: 'Ranged', icon: 'spell_fire_firebolt02' }, 
+    { class: 'Mage', spec: 'Frost', role: 'Ranged', icon: 'spell_frost_frostbolt02' },
+    { class: 'Warlock', spec: 'Affliction', role: 'Ranged', icon: 'spell_shadow_deathcoil' }, 
+    { class: 'Warlock', spec: 'Demonology', role: 'Ranged', icon: 'spell_shadow_metamorphosis' }, 
+    { class: 'Warlock', spec: 'Destruction', role: 'Ranged', icon: 'spell_shadow_rainoffire' },
+    { class: 'Monk', spec: 'Brewmaster', role: 'Tank', icon: 'spell_monk_brewmaster_spec' }, 
+    { class: 'Monk', spec: 'Mistweaver', role: 'Healer', icon: 'spell_monk_mistweaver_spec' }, 
+    { class: 'Monk', spec: 'Windwalker', role: 'Melee', icon: 'spell_monk_windwalker_spec' },
+    { class: 'Druid', spec: 'Guardian', role: 'Tank', icon: 'ability_racial_bearform' }, 
+    { class: 'Druid', spec: 'Restoration', role: 'Healer', icon: 'spell_nature_healingtouch' }, 
+    { class: 'Druid', spec: 'Balance', role: 'Ranged', icon: 'spell_nature_starfall' }, 
+    { class: 'Druid', spec: 'Feral', role: 'Melee', icon: 'ability_druid_catform' },
+    { class: 'DemonHunter', spec: 'Vengeance', role: 'Tank', icon: 'ability_demonhunter_spectank' }, 
+    { class: 'DemonHunter', spec: 'Havoc', role: 'Melee', icon: 'ability_demonhunter_specdps' }, 
+    { class: 'DemonHunter', spec: 'Devourer', role: 'Ranged', icon: 'spell_shadow_demonicempathy' },
+    { class: 'Evoker', spec: 'Preservation', role: 'Healer', icon: 'classicon_evoker_preservation' }, 
+    { class: 'Evoker', spec: 'Devastation', role: 'Ranged', icon: 'classicon_evoker_devastation' }, 
+    { class: 'Evoker', spec: 'Augmentation', role: 'Ranged', icon: 'classicon_evoker_augmentation' }
+  ];
+
+  let players = [];
+  let isGenerating = false;
+
+  // SAFE LOAD: Wait for the page to load, then grab saved players
+  document.addEventListener("DOMContentLoaded", () => {
+    try {
+      const saved = localStorage.getItem('wowRaidPlayers');
+      if (saved) {
+        players = JSON.parse(saved);
+        renderPlayers();
+      }
+    } catch (e) {
+      console.error("Could not load saved players.", e);
+      players = []; // Fallback to empty if data is corrupted
+    }
+  });
+
+  // Helper function to save current players
+  function saveToStorage() {
+    localStorage.setItem('wowRaidPlayers', JSON.stringify(players));
+  }
+
+  function clearPlayers() {
+  if (isGenerating) return;
+    if (confirm("Are you sure you want to clear all players?")) {
+      players = [];
+      saveToStorage();
+      renderPlayers();
+      document.getElementById('results').innerHTML = ''; // Clears the generated grid too
+    }
+  }
+
+  function handleEnter(e) { if (e.key === 'Enter') addPlayer(); }
+
+  function addPlayer() {
+    if (isGenerating) return;
+    const nameInput = document.getElementById('playerName');
+    const roleInput = document.getElementById('playerRole');
+    if (!nameInput.value.trim()) return;
+    
+    players.push({ name: nameInput.value.trim(), preferredRole: roleInput.value });
+    nameInput.value = '';
+    
+    saveToStorage(); // <-- ADDED THIS
+    renderPlayers();
+    
+    nameInput.focus();
+  }
+
+  function removePlayer(index) {
+    if (isGenerating) return;
+    players.splice(index, 1);
+    
+    saveToStorage(); // <-- ADDED THIS
+    renderPlayers();
+  }
+
+  function renderPlayers() {
+    const list = document.getElementById('playerList');
+    list.innerHTML = players.map((p, i) => `
+      <div class="player-badge">
+        <span><b>${p.name}</b> <span style="color:#aaa; font-size:0.85em;">(${p.preferredRole})</span></span>
+        <button class="delete-btn" onclick="removePlayer(${i})">✕</button>
+      </div>
+    `).join('');
+  }
+
+  function shuffle(array) {
+    let result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  function saveImage() {
+    const container = document.getElementById('results');
+    html2canvas(container, { backgroundColor: '#1a1a1a', useCORS: true, allowTaint: true }).then(canvas => {
+      const link = document.createElement('a');
+      link.download = 'wow-raid-comp.png';
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    });
+  }
+
+  async function generateComp() {
+    if (players.length === 0) return alert("Add some players first!");
+    if (isGenerating) return;
+    
+    isGenerating = true;
+    document.getElementById('rollBtn').disabled = true;
+    document.getElementById('addBtn').disabled = true;
+    const isFast = document.getElementById('fastRoll').checked;
+    
+    // --- 1. PRE-CALCULATE LOGIC ---
+    let targetTanks = Math.min(2, players.length);
+    let targetHealers = players.length >= 3 ? Math.max(1, Math.floor(players.length / 5)) : 0; 
+    let targetDps = players.length - targetTanks - targetHealers;
+
+    let counters = { Tank: 0, Healer: 0, Melee: 0, Ranged: 0, Flex: 0 };
+    let assignedRoles = [];
+    let leftoverPlayers = [];
+    let unassignedPlayers = shuffle([...players]);
+
+    unassignedPlayers.forEach(p => {
+      if (p.preferredRole === 'Tank' && counters.Tank < targetTanks) { counters.Tank++; assignedRoles.push({ player: p, role: 'Tank' }); } 
+      else if (p.preferredRole === 'Healer' && counters.Healer < targetHealers) { counters.Healer++; assignedRoles.push({ player: p, role: 'Healer' }); } 
+      else if (p.preferredRole === 'Melee' && (counters.Melee + counters.Ranged < targetDps)) { counters.Melee++; assignedRoles.push({ player: p, role: 'Melee' }); } 
+      else if (p.preferredRole === 'Ranged' && (counters.Melee + counters.Ranged < targetDps)) { counters.Ranged++; assignedRoles.push({ player: p, role: 'Ranged' }); } 
+      else { leftoverPlayers.push(p); }
+    });
+
+    let minMelee = Math.floor(targetDps / 3);
+    let minRanged = Math.floor(targetDps / 3);
+
+    leftoverPlayers.forEach(p => {
+      if (counters.Tank < targetTanks) { counters.Tank++; assignedRoles.push({ player: p, role: 'Tank' }); } 
+      else if (counters.Healer < targetHealers) { counters.Healer++; assignedRoles.push({ player: p, role: 'Healer' }); } 
+      else if (counters.Melee < minMelee && (counters.Melee + counters.Ranged + counters.Flex < targetDps)) { counters.Melee++; assignedRoles.push({ player: p, role: 'Melee' }); } 
+      else if (counters.Ranged < minRanged && (counters.Melee + counters.Ranged + counters.Flex < targetDps)) { counters.Ranged++; assignedRoles.push({ player: p, role: 'Ranged' }); } 
+      else { counters.Flex++; assignedRoles.push({ player: p, role: 'Flex' }); }
+    });
+
+    let finalComp = [];
+    let unrepresentedClasses = new Set([...new Set(allSpecs.map(s => s.class))]);
+    const rolePriority = { 'Tank': 1, 'Healer': 2, 'Ranged': 3, 'Melee': 4, 'Flex': 5 };
+    assignedRoles.sort((a, b) => rolePriority[a.role] - rolePriority[b.role]);
+
+    assignedRoles.forEach(item => {
+      let validSpecs = item.role === 'Flex' ? allSpecs.filter(s => s.role === 'Melee' || s.role === 'Ranged') : allSpecs.filter(s => s.role === item.role);
+      let unusedClassSpecs = validSpecs.filter(s => unrepresentedClasses.has(s.class));
+      let chosenSpec;
+
+      if (unusedClassSpecs.length > 0) {
+        chosenSpec = unusedClassSpecs[Math.floor(Math.random() * unusedClassSpecs.length)];
+      } else {
+        let leastUsedSpecs = validSpecs.map(spec => {
+           let count = finalComp.filter(fc => fc.class === spec.class).length;
+           return { spec, count };
+        });
+        let minCount = Math.min(...leastUsedSpecs.map(s => s.count));
+        let bestFallbackSpecs = leastUsedSpecs.filter(s => s.count === minCount).map(s => s.spec);
+        chosenSpec = bestFallbackSpecs[Math.floor(Math.random() * bestFallbackSpecs.length)];
+      }
+      
+      unrepresentedClasses.delete(chosenSpec.class);
+      finalComp.push({ ...item.player, ...chosenSpec, role: item.role === 'Flex' ? chosenSpec.role : item.role });
+    });
+
+    const displayOrder = { 'Tank': 1, 'Healer': 2, 'Melee': 3, 'Ranged': 4 };
+    finalComp.sort((a, b) => displayOrder[a.role] - displayOrder[b.role]);
+
+    // --- 2. ANIMATION PHASE ---
+    
+    let displayComp = finalComp.map(p => ({
+      name: p.name, role: p.role, class: 'Rolling', spec: 'Rolling', icon: '', isRolling: true, justRevealed: false
+    }));
+    renderResults(displayComp);
+    
+    let indicesToReveal = shuffle(Array.from(Array(finalComp.length).keys()));
+
+    if (isFast) {
+      // FAST ROLL: Pop grid items quickly without full-screen splash
+      for (let i of indicesToReveal) {
+        displayComp.forEach(p => p.justRevealed = false);
+        displayComp[i] = { ...finalComp[i], isRolling: false, justRevealed: true };
+        renderResults(displayComp);
+        await new Promise(r => setTimeout(r, 100)); // Super fast
+      }
+    } else {
+      // BIG SPLASH: Show full-screen overlay for each player
+      const overlay = document.getElementById('splashOverlay');
+      const content = document.getElementById('splashContent');
+      const sName = document.getElementById('splashPlayerName');
+      const sIcon = document.getElementById('splashIcon');
+      const sSpec = document.getElementById('splashSpec');
+      
+      overlay.style.display = 'flex';
+
+      for (let i of indicesToReveal) {
+        let p = finalComp[i];
+        
+        // 1. Reset to "Rolling" state for this player
+        content.className = '';
+        content.style.borderColor = '#444';
+        sName.innerText = p.name;
+        sName.className = '';
+        sIcon.src = unknownIcon;
+        sIcon.parentElement.classList.add('splash-rolling');
+        sSpec.innerText = "Rolling...";
+        sSpec.className = '';
+        
+        await new Promise(r => setTimeout(r, 500)); // Suspense...
+
+        // 2. Reveal!
+        sIcon.parentElement.classList.remove('splash-rolling');
+        content.classList.add('splash-reveal');
+        
+        // Apply class colors to the splash modal
+        content.style.borderColor = getComputedStyle(document.body).getPropertyValue(`--color-${p.class}`) || '#fff';
+        content.className = `splash-reveal ${p.class}`; // Uses the border colors from CSS
+        
+        sIcon.src = `${iconBase}${p.icon}.jpg`;
+        sName.className = `text-${p.class}`;
+        sSpec.innerText = `${p.spec} ${p.class}`;
+        sSpec.className = `text-${p.class}`;
+
+        // 3. Update the grid in the background
+        displayComp.forEach(p => p.justRevealed = false);
+        displayComp[i] = { ...p, isRolling: false, justRevealed: true };
+        renderResults(displayComp);
+
+        await new Promise(r => setTimeout(r, 2000)); // Let them celebrate
+      }
+      
+      overlay.style.display = 'none'; // Close overlay at the end
+    }
+
+    // Done!
+    displayComp.forEach(p => p.justRevealed = false);
+    renderResults(displayComp); // Final clean render
+    
+    isGenerating = false;
+    document.getElementById('rollBtn').disabled = false;
+    document.getElementById('addBtn').disabled = false;
+
+    if (!document.getElementById('saveBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'saveBtn';
+      btn.innerText = "Save Screenshot";
+      btn.style.marginLeft = "10px";
+      btn.style.backgroundColor = "#4ade80";
+      btn.onclick = saveImage;
+      document.querySelector('.generate-btn-container').appendChild(btn);
+    }
+  }
+
+  function renderResults(displayPlayers) {
+    const resultsDiv = document.getElementById('results');
+    const columns = ['Tank', 'Healer', 'Melee', 'Ranged'];
+    
+    let html = '';
+    columns.forEach(role => {
+      let rolePlayers = displayPlayers.filter(p => p.role === role);
+      html += `
+        <div class="role-column col-${role}">
+          <h2 class="role-header">${role}s <span>${rolePlayers.length}</span></h2>
+          <div class="role-items">
+            ${rolePlayers.map(p => {
+              const iconUrl = p.isRolling ? unknownIcon : `${iconBase}${p.icon}.jpg`;
+              let containerClass = p.isRolling ? 'rolling' : p.class;
+              if (p.justRevealed) containerClass += ' revealed';
+              
+              const textColorClass = p.isRolling ? '' : `text-${p.class}`;
+              const specText = p.isRolling ? '...' : `${p.spec} ${p.class}`;
+
+              return `
+                <div class="result-item ${containerClass}">
+                  <img src="${iconUrl}" alt="${p.spec}" class="spec-icon">
+                  <div class="player-info">
+                    <span class="player-name ${textColorClass}">${p.name}</span>
+                    <span class="player-spec">${specText}</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+            ${rolePlayers.length === 0 ? '<div style="color: #666; text-align: center; padding: 20px 0; font-size: 0.9em;">None</div>' : ''}
+          </div>
+        </div>
+      `;
+    });
+    resultsDiv.innerHTML = html;
+  }
+</script>
+<p style="text-align: center; color: #666; font-size: 0.8em; margin-top: 40px;">
+  Inspired by <a href="https://wheel.raidexcuses.com/" style="color: #ff9900;">RaidExcuses</a>. <br>
+  World of Warcraft and Blizzard Entertainment are trademarks or registered trademarks of Blizzard Entertainment, Inc.
+</p>
+</body>
+</html>
