@@ -313,21 +313,44 @@
     const rolePriority = { 'Tank': 1, 'Healer': 2, 'Ranged': 3, 'Melee': 4, 'Flex': 5 };
     assignedRoles.sort((a, b) => rolePriority[a.role] - rolePriority[b.role]);
 
+    // 4. Assign the actual Specs
     assignedRoles.forEach(item => {
       let validSpecs = item.role === 'Flex' ? allSpecs.filter(s => s.role === 'Melee' || s.role === 'Ranged') : allSpecs.filter(s => s.role === item.role);
       let unusedClassSpecs = validSpecs.filter(s => unrepresentedClasses.has(s.class));
       let chosenSpec;
 
       if (unusedClassSpecs.length > 0) {
+        // PRIORITY 1: Strictly pick a class we haven't seen yet
         chosenSpec = unusedClassSpecs[Math.floor(Math.random() * unusedClassSpecs.length)];
       } else {
-        let leastUsedSpecs = validSpecs.map(spec => {
-           let count = finalComp.filter(fc => fc.class === spec.class).length;
-           return { spec, count };
+        // PRIORITY 2: All classes used! Use Harsher Exponential Weighting for duplicates
+        let weightedSpecs = validSpecs.map(spec => {
+          let classCount = finalComp.filter(fc => fc.class === spec.class).length;
+          let specCount = finalComp.filter(fc => fc.spec === spec.spec).length;
+
+          // HARSH PENALTY: 
+          // classWeight drops to 25%, then 6.25%, then 1.5%
+          // specWeight drops to 10%, then 1%, then 0.1%
+          let classWeight = Math.pow(0.25, classCount);
+          let specWeight = Math.pow(0.10, specCount);
+          
+          let weight = 100 * classWeight * specWeight;
+          return { spec, weight };
         });
-        let minCount = Math.min(...leastUsedSpecs.map(s => s.count));
-        let bestFallbackSpecs = leastUsedSpecs.filter(s => s.count === minCount).map(s => s.spec);
-        chosenSpec = bestFallbackSpecs[Math.floor(Math.random() * bestFallbackSpecs.length)];
+
+        // Spin the weighted random wheel
+        let totalWeight = weightedSpecs.reduce((sum, s) => sum + s.weight, 0);
+        let random = Math.random() * totalWeight;
+
+        for (let s of weightedSpecs) {
+          if (random < s.weight) {
+            chosenSpec = s.spec;
+            break;
+          }
+          random -= s.weight;
+        }
+        
+        if (!chosenSpec) chosenSpec = weightedSpecs[0].spec;
       }
       
       unrepresentedClasses.delete(chosenSpec.class);
