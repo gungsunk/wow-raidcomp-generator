@@ -12,13 +12,17 @@
   h1 { text-align: center; color: #ffcc00; margin-bottom: 5px; }
   p.subtitle { text-align: center; color: #aaa; font-size: 0.9em; margin-top: 0; margin-bottom: 20px; }
   
-  .form-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; align-items: center; }
-  input[type="text"], select, button { padding: 10px; border-radius: 4px; border: 1px solid #444; font-size: 16px; background: #333; color: white; }
-  input[type="text"]:focus, select:focus { outline: none; border-color: #ff9900; }
+  .form-group { display: flex; gap: 15px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; align-items: center; background: #1e1e1e; padding: 15px; border-radius: 6px; border: 1px solid #333; }
+  input[type="text"], button { padding: 10px; border-radius: 4px; border: 1px solid #444; font-size: 16px; background: #333; color: white; }
+  input[type="text"]:focus { outline: none; border-color: #ff9900; }
   button { background-color: #ff9900; color: #111; cursor: pointer; font-weight: bold; border: none; transition: background 0.2s; }
   button:hover { background-color: #cc7a00; }
   button:disabled { background-color: #555; color: #888; cursor: not-allowed; }
   
+  .role-selectors { display: flex; gap: 15px; align-items: center; }
+  .role-label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.95em; }
+  .role-label input { width: 18px; height: 18px; cursor: pointer; }
+
   .checkbox-group { display: flex; align-items: center; gap: 5px; background: #333; padding: 10px 15px; border-radius: 4px; border: 1px solid #444; cursor: pointer; user-select: none; }
   .checkbox-group input { width: 18px; height: 18px; cursor: pointer; }
 
@@ -72,10 +76,7 @@
   
   .splash-rolling #splashIcon { animation: spin 0.5s linear infinite; }
   .splash-reveal { animation: splashPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-  @keyframes splashPop {
-    0% { transform: scale(0.8); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-  }
+  @keyframes splashPop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 
   @media (max-width: 900px) { .roles-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 600px) { .roles-grid { grid-template-columns: 1fr; } #splashContent { padding: 30px; } #splashPlayerName { font-size: 2em;} #splashIcon { width: 96px; height: 96px; } }
@@ -97,23 +98,24 @@
 <body>
 
 <div class="container">
-  <h1>Raid Comp Generator</h1>
-  <p class="subtitle">A semi-balanced way to generate your raid composition.</p>
+  <h1>Wheel of Fun Comp Generator</h1>
+  <p class="subtitle">Ensures all 13 classes are used before assigning random duplicates.</p>
   
   <div class="form-group">
     <input type="text" id="playerName" placeholder="Enter Player Name" required onkeypress="handleEnter(event)">
-    <select id="playerRole">
-      <option value="Any">Any Role</option>
-      <option value="Tank">Tank</option>
-      <option value="Healer">Healer</option>
-      <option value="Melee">Melee DPS</option>
-      <option value="Ranged">Ranged DPS</option>
-    </select>
+    
+    <div class="role-selectors" id="roleSelector">
+      <label class="role-label"><input type="checkbox" value="Tank" class="role-check" checked> Tank</label>
+      <label class="role-label"><input type="checkbox" value="Healer" class="role-check" checked> Healer</label>
+      <label class="role-label"><input type="checkbox" value="Melee" class="role-check" checked> Melee</label>
+      <label class="role-label"><input type="checkbox" value="Ranged" class="role-check" checked> Ranged</label>
+    </div>
+    
     <button onclick="addPlayer()" id="addBtn">Add Player</button>
     <button onclick="clearPlayers()" style="background-color: #ff4444; color: white;">Clear All</button>
     
     <label class="checkbox-group">
-      <input type="checkbox" id="fastRoll"> Fast Roll (Skip Splash)
+      <input type="checkbox" id="fastRoll"> Fast Roll
     </label>
   </div>
 
@@ -138,8 +140,8 @@
 </div>
 
 <script>
-  const iconBase = "./icons/";
-  const unknownIcon = "./icons/inv_misc_questionmark.jpg";
+  const iconBase = "./icons/"; 
+  const unknownIcon = "./icons/inv_misc_questionmark.jpg"; // Fallback placeholder icon
   
   const allSpecs = [
     { class: 'Warrior', spec: 'Protection', role: 'Tank', icon: 'ability_warrior_defensivestance' }, 
@@ -187,7 +189,7 @@
   let players = [];
   let isGenerating = false;
 
-  // SAFE LOAD: Wait for the page to load, then grab saved players
+  // SAFE LOAD LocalStorage
   document.addEventListener("DOMContentLoaded", () => {
     try {
       const saved = localStorage.getItem('wowRaidPlayers');
@@ -197,23 +199,12 @@
       }
     } catch (e) {
       console.error("Could not load saved players.", e);
-      players = []; // Fallback to empty if data is corrupted
+      players = [];
     }
   });
 
-  // Helper function to save current players
   function saveToStorage() {
     localStorage.setItem('wowRaidPlayers', JSON.stringify(players));
-  }
-
-  function clearPlayers() {
-  if (isGenerating) return;
-    if (confirm("Are you sure you want to clear all players?")) {
-      players = [];
-      saveToStorage();
-      renderPlayers();
-      document.getElementById('results').innerHTML = ''; // Clears the generated grid too
-    }
   }
 
   function handleEnter(e) { if (e.key === 'Enter') addPlayer(); }
@@ -221,34 +212,54 @@
   function addPlayer() {
     if (isGenerating) return;
     const nameInput = document.getElementById('playerName');
-    const roleInput = document.getElementById('playerRole');
+    const roleChecks = document.querySelectorAll('.role-check:checked');
     if (!nameInput.value.trim()) return;
     
-    players.push({ name: nameInput.value.trim(), preferredRole: roleInput.value });
+    // If no boxes checked, default to ALL roles checked (Any Role)
+    let roles = roleChecks.length > 0 
+      ? Array.from(roleChecks).map(cb => cb.value) 
+      : ['Tank', 'Healer', 'Melee', 'Ranged'];
+    
+    players.push({ name: nameInput.value.trim(), preferredRoles: roles });
+    
+    // Reset Form Elements
     nameInput.value = '';
+    document.querySelectorAll('.role-check').forEach(cb => cb.checked = true); // Reset checkboxes to checked state
     
-    saveToStorage(); // <-- ADDED THIS
+    saveToStorage();
     renderPlayers();
-    
     nameInput.focus();
   }
 
   function removePlayer(index) {
     if (isGenerating) return;
     players.splice(index, 1);
-    
-    saveToStorage(); // <-- ADDED THIS
+    saveToStorage();
     renderPlayers();
+  }
+
+  function clearPlayers() {
+    if (isGenerating) return;
+    if (confirm("Are you sure you want to clear all players?")) {
+      players = [];
+      saveToStorage();
+      renderPlayers();
+      document.getElementById('results').innerHTML = '';
+    }
   }
 
   function renderPlayers() {
     const list = document.getElementById('playerList');
-    list.innerHTML = players.map((p, i) => `
-      <div class="player-badge">
-        <span><b>${p.name}</b> <span style="color:#aaa; font-size:0.85em;">(${p.preferredRole})</span></span>
-        <button class="delete-btn" onclick="removePlayer(${i})">✕</button>
-      </div>
-    `).join('');
+    list.innerHTML = players.map((p, i) => {
+      // Human-readable format for preferences tag
+      let roleDisplay = p.preferredRoles.length === 4 ? 'Any' : p.preferredRoles.join(', ');
+      return `
+        <div class="player-badge">
+          <span><b>${p.name}</b> <span style="color:#aaa; font-size:0.85em;">(${roleDisplay})</span></span>
+          <button class="delete-btn" onclick="removePlayer(${i})">✕</button>
+        </div>
+      `;
+    }).join('');
   }
 
   function shuffle(array) {
@@ -270,7 +281,7 @@
     });
   }
 
-  async function generateComp() {
+async function generateComp() {
     if (players.length === 0) return alert("Add some players first!");
     if (isGenerating) return;
     
@@ -279,89 +290,120 @@
     document.getElementById('addBtn').disabled = true;
     const isFast = document.getElementById('fastRoll').checked;
     
-    // --- 1. PRE-CALCULATE LOGIC ---
+    // --- 1. DISTRIBUTION MATH LOGIC ---
     let targetTanks = Math.min(2, players.length);
     let targetHealers = players.length >= 3 ? Math.max(1, Math.floor(players.length / 5)) : 0; 
     let targetDps = players.length - targetTanks - targetHealers;
 
-    let counters = { Tank: 0, Healer: 0, Melee: 0, Ranged: 0, Flex: 0 };
+    // Define strict minimums to ensure we don't end up with 0 or 1
+    let minMelee = Math.max(2, Math.floor(targetDps / 3));
+    let minRanged = Math.max(2, Math.floor(targetDps / 3));
+    
+    // Create "Buckets" for roles
+    let buckets = { 
+      Tank: targetTanks, 
+      Healer: targetHealers, 
+      Melee: minMelee, 
+      Ranged: minRanged, 
+      Flex: targetDps - (minMelee + minRanged) 
+    };
+
     let assignedRoles = [];
-    let leftoverPlayers = [];
     let unassignedPlayers = shuffle([...players]);
 
+    // Fill buckets based on player preferences
     unassignedPlayers.forEach(p => {
-      if (p.preferredRole === 'Tank' && counters.Tank < targetTanks) { counters.Tank++; assignedRoles.push({ player: p, role: 'Tank' }); } 
-      else if (p.preferredRole === 'Healer' && counters.Healer < targetHealers) { counters.Healer++; assignedRoles.push({ player: p, role: 'Healer' }); } 
-      else if (p.preferredRole === 'Melee' && (counters.Melee + counters.Ranged < targetDps)) { counters.Melee++; assignedRoles.push({ player: p, role: 'Melee' }); } 
-      else if (p.preferredRole === 'Ranged' && (counters.Melee + counters.Ranged < targetDps)) { counters.Ranged++; assignedRoles.push({ player: p, role: 'Ranged' }); } 
-      else { leftoverPlayers.push(p); }
+      const canPlay = (role) => p.preferredRoles.includes(role);
+      
+      // Try to find a bucket the player wants that still has room
+      let desiredRoles = ['Tank', 'Healer', 'Melee', 'Ranged'].filter(r => canPlay(r) && buckets[r] > 0);
+      
+      if (desiredRoles.length > 0) {
+        let chosen = desiredRoles[0]; // Take the first one they want
+        buckets[chosen]--;
+        assignedRoles.push({ player: p, role: chosen });
+      } else {
+        // No room or no preference, put in Flex bucket
+        buckets.Flex--;
+        assignedRoles.push({ player: p, role: 'Flex' });
+      }
     });
 
-    let minMelee = Math.floor(targetDps / 3);
-    let minRanged = Math.floor(targetDps / 3);
-
-    leftoverPlayers.forEach(p => {
-      if (counters.Tank < targetTanks) { counters.Tank++; assignedRoles.push({ player: p, role: 'Tank' }); } 
-      else if (counters.Healer < targetHealers) { counters.Healer++; assignedRoles.push({ player: p, role: 'Healer' }); } 
-      else if (counters.Melee < minMelee && (counters.Melee + counters.Ranged + counters.Flex < targetDps)) { counters.Melee++; assignedRoles.push({ player: p, role: 'Melee' }); } 
-      else if (counters.Ranged < minRanged && (counters.Melee + counters.Ranged + counters.Flex < targetDps)) { counters.Ranged++; assignedRoles.push({ player: p, role: 'Ranged' }); } 
-      else { counters.Flex++; assignedRoles.push({ player: p, role: 'Flex' }); }
+    // Now resolve 'Flex' players into Melee or Ranged if those buckets need filling
+    assignedRoles.forEach(item => {
+      if (item.role === 'Flex') {
+        if (buckets.Melee > 0) { item.role = 'Melee'; buckets.Melee--; }
+        else if (buckets.Ranged > 0) { item.role = 'Ranged'; buckets.Ranged--; }
+        else { item.role = Math.random() > 0.5 ? 'Melee' : 'Ranged'; }
+      }
     });
 
     let finalComp = [];
     let unrepresentedClasses = new Set([...new Set(allSpecs.map(s => s.class))]);
-    const rolePriority = { 'Tank': 1, 'Healer': 2, 'Ranged': 3, 'Melee': 4, 'Flex': 5 };
+    
+    // Sort roles to ensure Tanks/Healers get assigned first
+    const rolePriority = { 'Tank': 1, 'Healer': 2, 'Ranged': 3, 'Melee': 4 };
     assignedRoles.sort((a, b) => rolePriority[a.role] - rolePriority[b.role]);
 
-    // 4. Assign the actual Specs
-    assignedRoles.forEach(item => {
-      let validSpecs = item.role === 'Flex' ? allSpecs.filter(s => s.role === 'Melee' || s.role === 'Ranged') : allSpecs.filter(s => s.role === item.role);
+    // --- 2. ASSIGN SPECS USING UNIFIED BUFFER & WEIGHT SYSTEM ---
+    assignedRoles.forEach((item, index) => {
+      let validSpecs = allSpecs.filter(s => s.role === item.role);
+      
+      // Calculate "Panic Mode" Buffer
+      // How many players left to assign minus how many unique classes we still need
+      let remainingSlots = assignedRoles.length - index;
+      let buffer = remainingSlots - unrepresentedClasses.size;
       let unusedClassSpecs = validSpecs.filter(s => unrepresentedClasses.has(s.class));
+      
+      // If we are out of buffer space, we MUST force unrepresented classes to meet the 13-class quota
+      if (buffer <= 0 && unusedClassSpecs.length > 0) {
+        validSpecs = unusedClassSpecs;
+      }
+
+      // Calculate weights for all valid specs
+      let weightedSpecs = validSpecs.map(spec => {
+        let isUnrepresented = unrepresentedClasses.has(spec.class);
+        let classCount = finalComp.filter(fc => fc.class === spec.class).length;
+        let specCount = finalComp.filter(fc => fc.spec === spec.spec).length;
+
+        let weight = 0;
+        if (isUnrepresented) {
+          weight = 100; // Base weight for grabbing new classes
+        } else {
+          // It's a duplicate! Apply exponential decay.
+          // Tanks and Healers get harsher penalties than DPS.
+          let classDecay = (item.role === 'Tank' || item.role === 'Healer') ? 0.15 : 0.25;
+          let specDecay = (item.role === 'Tank' || item.role === 'Healer') ? 0.05 : 0.10;
+
+          let classWeight = Math.pow(classDecay, classCount);
+          let specWeight = Math.pow(specDecay, specCount);
+          
+          weight = 100 * classWeight * specWeight;
+        }
+        return { spec, weight };
+      });
+
+      // Spin the weighted random wheel
+      let totalWeight = weightedSpecs.reduce((sum, s) => sum + s.weight, 0);
+      let random = Math.random() * totalWeight;
       let chosenSpec;
 
-      if (unusedClassSpecs.length > 0) {
-        // PRIORITY 1: Strictly pick a class we haven't seen yet
-        chosenSpec = unusedClassSpecs[Math.floor(Math.random() * unusedClassSpecs.length)];
-      } else {
-        // PRIORITY 2: All classes used! Use Harsher Exponential Weighting for duplicates
-        let weightedSpecs = validSpecs.map(spec => {
-          let classCount = finalComp.filter(fc => fc.class === spec.class).length;
-          let specCount = finalComp.filter(fc => fc.spec === spec.spec).length;
-
-          // HARSH PENALTY: 
-          // classWeight drops to 25%, then 6.25%, then 1.5%
-          // specWeight drops to 10%, then 1%, then 0.1%
-          let classWeight = Math.pow(0.25, classCount);
-          let specWeight = Math.pow(0.10, specCount);
-          
-          let weight = 100 * classWeight * specWeight;
-          return { spec, weight };
-        });
-
-        // Spin the weighted random wheel
-        let totalWeight = weightedSpecs.reduce((sum, s) => sum + s.weight, 0);
-        let random = Math.random() * totalWeight;
-
-        for (let s of weightedSpecs) {
-          if (random < s.weight) {
-            chosenSpec = s.spec;
-            break;
-          }
-          random -= s.weight;
-        }
-        
-        if (!chosenSpec) chosenSpec = weightedSpecs[0].spec;
+      for (let s of weightedSpecs) {
+        if (random < s.weight) { chosenSpec = s.spec; break; }
+        random -= s.weight;
       }
       
+      // Safety fallback
+      if (!chosenSpec) chosenSpec = weightedSpecs[0].spec;
+      
       unrepresentedClasses.delete(chosenSpec.class);
-      finalComp.push({ ...item.player, ...chosenSpec, role: item.role === 'Flex' ? chosenSpec.role : item.role });
+      finalComp.push({ ...item.player, ...chosenSpec, role: item.role });
     });
 
     const displayOrder = { 'Tank': 1, 'Healer': 2, 'Melee': 3, 'Ranged': 4 };
     finalComp.sort((a, b) => displayOrder[a.role] - displayOrder[b.role]);
 
-    // --- 2. ANIMATION PHASE ---
-    
+    // --- 3. THEATRICAL ANIMATION LOGIC ---
     let displayComp = finalComp.map(p => ({
       name: p.name, role: p.role, class: 'Rolling', spec: 'Rolling', icon: '', isRolling: true, justRevealed: false
     }));
@@ -370,15 +412,13 @@
     let indicesToReveal = shuffle(Array.from(Array(finalComp.length).keys()));
 
     if (isFast) {
-      // FAST ROLL: Pop grid items quickly without full-screen splash
       for (let i of indicesToReveal) {
         displayComp.forEach(p => p.justRevealed = false);
         displayComp[i] = { ...finalComp[i], isRolling: false, justRevealed: true };
         renderResults(displayComp);
-        await new Promise(r => setTimeout(r, 100)); // Super fast
+        await new Promise(r => setTimeout(r, 100));
       }
     } else {
-      // BIG SPLASH: Show full-screen overlay for each player
       const overlay = document.getElementById('splashOverlay');
       const content = document.getElementById('splashContent');
       const sName = document.getElementById('splashPlayerName');
@@ -390,7 +430,6 @@
       for (let i of indicesToReveal) {
         let p = finalComp[i];
         
-        // 1. Reset to "Rolling" state for this player
         content.className = '';
         content.style.borderColor = '#444';
         sName.innerText = p.name;
@@ -400,35 +439,28 @@
         sSpec.innerText = "Rolling...";
         sSpec.className = '';
         
-        await new Promise(r => setTimeout(r, 500)); // Suspense...
+        await new Promise(r => setTimeout(r, 500));
 
-        // 2. Reveal!
         sIcon.parentElement.classList.remove('splash-rolling');
         content.classList.add('splash-reveal');
         
-        // Apply class colors to the splash modal
-        content.style.borderColor = getComputedStyle(document.body).getPropertyValue(`--color-${p.class}`) || '#fff';
-        content.className = `splash-reveal ${p.class}`; // Uses the border colors from CSS
-        
+        content.className = `splash-reveal ${p.class}`; 
         sIcon.src = `${iconBase}${p.icon}.jpg`;
         sName.className = `text-${p.class}`;
         sSpec.innerText = `${p.spec} ${p.class}`;
         sSpec.className = `text-${p.class}`;
 
-        // 3. Update the grid in the background
         displayComp.forEach(p => p.justRevealed = false);
         displayComp[i] = { ...p, isRolling: false, justRevealed: true };
         renderResults(displayComp);
 
-        await new Promise(r => setTimeout(r, 2000)); // Let them celebrate
+        await new Promise(r => setTimeout(r, 1200));
       }
-      
-      overlay.style.display = 'none'; // Close overlay at the end
+      overlay.style.display = 'none';
     }
 
-    // Done!
     displayComp.forEach(p => p.justRevealed = false);
-    renderResults(displayComp); // Final clean render
+    renderResults(displayComp);
     
     isGenerating = false;
     document.getElementById('rollBtn').disabled = false;
@@ -482,9 +514,5 @@
     resultsDiv.innerHTML = html;
   }
 </script>
-<p style="text-align: center; color: #666; font-size: 0.8em; margin-top: 40px;">
-  Inspired by <a href="https://wheel.raidexcuses.com/" style="color: #ff9900;">RaidExcuses</a>. <br>
-  World of Warcraft and Blizzard Entertainment are trademarks or registered trademarks of Blizzard Entertainment, Inc.
-</p>
 </body>
 </html>
