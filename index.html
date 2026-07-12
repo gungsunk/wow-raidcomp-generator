@@ -65,6 +65,15 @@
     flex-direction: column; text-align: center;
   }
   #splashContent {
+    width: 400px;
+    height: 350px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    box-sizing: border-box;
+    overflow: hidden;
     background: #1e1e1e; padding: 50px 80px; border-radius: 12px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.8); border: 3px solid #444;
     display: flex; flex-direction: column; align-items: center;
@@ -548,6 +557,13 @@ async function generateComp() {
       const sIcon = document.getElementById('splashIcon');
       const sSpec = document.getElementById('splashSpec');
       
+      // Calculate dynamic speed based on raid size
+      let clampedSize = Math.max(10, Math.min(players.length, 30));
+      // Drops by 50ms per player: 10 players = 3000ms, 30 players = 2000ms
+      let totalDelay = 3000 - ((clampedSize - 10) * 50); 
+      let rollDelay = totalDelay * 0.3; // 30% of the time spent spinning
+      let revealDelay = totalDelay * 0.7; // 70% of the time admiring the result
+
       overlay.style.display = 'flex';
 
       for (let i of indicesToReveal) {
@@ -562,7 +578,8 @@ async function generateComp() {
         sSpec.innerText = "Rolling...";
         sSpec.className = '';
         
-        await new Promise(r => setTimeout(r, 500));
+        // Dynamic rolling wait
+        await new Promise(r => setTimeout(r, rollDelay));
 
         sIcon.parentElement.classList.remove('splash-rolling');
         content.classList.add('splash-reveal');
@@ -577,7 +594,8 @@ async function generateComp() {
         displayComp[i] = { ...p, isRolling: false, justRevealed: true };
         renderResults(displayComp);
 
-        await new Promise(r => setTimeout(r, 1200));
+        // Dynamic reveal wait
+        await new Promise(r => setTimeout(r, revealDelay));
       }
       overlay.style.display = 'none';
     }
