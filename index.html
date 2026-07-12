@@ -248,15 +248,58 @@
     }
   }
 
+  // NEW: Update a player's locked spec and save it
+  function updateLock(index, val) {
+    if (val === "") {
+      delete players[index].lockedSpec;
+      delete players[index].isLocked;
+    } else {
+      let parts = val.split("|");
+      let specObj = allSpecs.find(s => s.class === parts[0] && s.spec === parts[1]);
+      players[index].lockedSpec = specObj;
+      players[index].isLocked = true;
+    }
+    saveToStorage();
+    renderPlayers();
+  }
+
   function renderPlayers() {
     const list = document.getElementById('playerList');
+    
+    // Group specs by class for a clean dropdown menu
+    let groupedSpecs = {};
+    allSpecs.forEach(s => {
+      if (!groupedSpecs[s.class]) groupedSpecs[s.class] = [];
+      groupedSpecs[s.class].push(s);
+    });
+
     list.innerHTML = players.map((p, i) => {
-      // Human-readable format for preferences tag
       let roleDisplay = p.preferredRoles.length === 4 ? 'Any' : p.preferredRoles.join(', ');
+      let selectedVal = p.isLocked ? `${p.lockedSpec.class}|${p.lockedSpec.spec}` : "";
+      
+      let playerOptions = `<option value="">🎲 Random Roll (${roleDisplay})</option>`;
+      
+      for (const [className, specs] of Object.entries(groupedSpecs)) {
+        playerOptions += `<optgroup label="${className}">`;
+        specs.forEach(s => {
+          let sel = (selectedVal === `${s.class}|${s.spec}`) ? "selected" : "";
+          playerOptions += `<option value="${s.class}|${s.spec}" ${sel}>${s.spec} ${s.class} (${s.role})</option>`;
+        });
+        playerOptions += `</optgroup>`;
+      }
+
+      // If locked, give the badge a subtle green border so it stands out
+      let badgeStyle = p.isLocked ? `border: 2px solid #4ade80;` : `border: 1px solid #555;`;
+
       return `
-        <div class="player-badge">
-          <span><b>${p.name}</b> <span style="color:#aaa; font-size:0.85em;">(${roleDisplay})</span></span>
-          <button class="delete-btn" onclick="removePlayer(${i})">✕</button>
+        <div class="player-badge" style="${badgeStyle}">
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <span><b>${p.name}</b></span>
+            <select onchange="updateLock(${i}, this.value)" style="font-size: 0.8em; padding: 3px; background: #222; color: #ccc; border: 1px solid #444; border-radius: 4px; max-width: 150px;">
+              ${playerOptions}
+            </select>
+          </div>
+          <button class="delete-btn" onclick="removePlayer(${i})" style="margin-left: 10px;">✕</button>
         </div>
       `;
     }).join('');
@@ -291,122 +334,175 @@ async function generateComp() {
     const isFast = document.getElementById('fastRoll').checked;
     
     // --- 1. DISTRIBUTION MATH LOGIC ---
-    let targetTanks = Math.min(2, players.length);
     let n = players.length;
+    let targetTanks = Math.min(2, n);
     let targetHealers = 0;
 
-    // Dynamic Healer Thresholds
-    if (n <= 10) {
-      targetHealers = Math.min(2, n); // Hard cap 2 (unless less than 2 players exist)
-    } else if (n >= 11 && n <= 14) {
-      targetHealers = Math.random() > 0.5 ? 2 : 3; // 50/50 chance for 2 or 3
-    } else if (n === 15) {
-      targetHealers = 3; // Hard cap 3
-    } else if (n >= 16 && n <= 19) {
-      targetHealers = Math.random() > 0.5 ? 3 : 4; // 50/50 chance for 3 or 4
-    } else if (n === 20) {
-      targetHealers = 4; // Hard cap 4
-    } else if (n >= 21 && n <= 24) {
-      targetHealers = Math.random() > 0.5 ? 4 : 5; // 50/50 chance for 4 or 5
-    } else if (n === 25) {
-      targetHealers = 5; // Hard cap 5
-    } else if (n >= 26 && n <= 29) {
-      targetHealers = Math.random() > 0.5 ? 5 : 6; // 50/50 chance for 5 or 6
-    } else {
-      targetHealers = 6; // Hard cap 6 for 30+ players
+    if (n <= 10) { targetHealers = Math.min(2, n); } 
+    else if (n >= 30) { targetHealers = 6; } 
+    else {
+      let baseHealers = Math.floor(n / 5);
+      let remainder = n % 5;
+      let extraHealerChance = Math.pow(remainder, 2) / 20; 
+      targetHealers = baseHealers + (Math.random() < extraHealerChance ? 1 : 0);
     }
 
-    let targetDps = players.length - targetTanks - targetHealers;
+    // --- 2. THE SAFEGUARDS ---
+    let availableTanks = players.filter(p => (p.isLocked && p.lockedSpec.role === 'Tank') || (!p.isLocked && p.preferredRoles.includes('Tank'))).length;
+    let availableHealers = players.filter(p => (p.isLocked && p.lockedSpec.role === 'Healer') || (!p.isLocked && p.preferredRoles.includes('Healer'))).length;
 
-    // Define strict minimums to ensure we don't end up with 0 or 1
+    if (availableTanks < targetTanks) {
+      isGenerating = false; document.getElementById('rollBtn').disabled = false; document.getElementById('addBtn').disabled = false;
+      return alert(`🛑 Safeguard Triggered:\nNot enough willing Tanks! You need ${targetTanks}, but only ${availableTanks} have 'Tank' selected or locked.`);
+    }
+    if (availableHealers < targetHealers) {
+      isGenerating = false; document.getElementById('rollBtn').disabled = false; document.getElementById('addBtn').disabled = false;
+      return alert(`🛑 Safeguard Triggered:\nNot enough willing Healers! You need ${targetHealers}, but only ${availableHealers} have 'Healer' selected or locked.`);
+    }
+
+    // --- 3. BUCKETS & PRE-PROCESSING LOCKED PLAYERS ---
+    let targetDps = n - targetTanks - targetHealers;
     let minMelee = Math.max(2, Math.floor(targetDps / 3));
     let minRanged = Math.max(2, Math.floor(targetDps / 3));
     
-    // Create "Buckets" for roles
-    let buckets = { 
-      Tank: targetTanks, 
-      Healer: targetHealers, 
-      Melee: minMelee, 
-      Ranged: minRanged, 
-      Flex: targetDps - (minMelee + minRanged) 
-    };
-
+    let buckets = { Tank: targetTanks, Healer: targetHealers, Melee: minMelee, Ranged: minRanged, Flex: targetDps - (minMelee + minRanged) };
+    
     let assignedRoles = [];
-    let unassignedPlayers = shuffle([...players]);
+    let finalComp = [];
+    let unrepresentedClasses = new Set([...new Set(allSpecs.map(s => s.class))]);
+    let unassignedPlayers = [];
 
-    // Fill buckets based on player preferences
+    // Extract locked players first and deduct their roles from the buckets
+    players.forEach(p => {
+      if (p.isLocked) {
+        let r = p.lockedSpec.role;
+        if (r === 'Tank') buckets.Tank--;
+        else if (r === 'Healer') buckets.Healer--;
+        else if (r === 'Melee') { if(buckets.Melee > 0) buckets.Melee--; else buckets.Flex--; }
+        else if (r === 'Ranged') { if(buckets.Ranged > 0) buckets.Ranged--; else buckets.Flex--; }
+        
+        finalComp.push({ ...p, ...p.lockedSpec, role: r, isLocked: true });
+        unrepresentedClasses.delete(p.lockedSpec.class);
+      } else {
+        unassignedPlayers.push(p);
+      }
+    });
+
+    unassignedPlayers = shuffle(unassignedPlayers);
+
+    // Fill buckets based on unassigned player preferences
     unassignedPlayers.forEach(p => {
       const canPlay = (role) => p.preferredRoles.includes(role);
-      
-      // Try to find a bucket the player wants that still has room
       let desiredRoles = ['Tank', 'Healer', 'Melee', 'Ranged'].filter(r => canPlay(r) && buckets[r] > 0);
       
       if (desiredRoles.length > 0) {
-        let chosen = desiredRoles[0]; // Take the first one they want
+        let chosen = desiredRoles[0];
         buckets[chosen]--;
         assignedRoles.push({ player: p, role: chosen });
       } else {
-        // No room or no preference, put in Flex bucket
         buckets.Flex--;
         assignedRoles.push({ player: p, role: 'Flex' });
       }
     });
 
-    // Now resolve 'Flex' players into Melee or Ranged if those buckets need filling
+    // Resolve 'Flex' players with elastic balancing
     assignedRoles.forEach(item => {
       if (item.role === 'Flex') {
-        if (buckets.Melee > 0) { item.role = 'Melee'; buckets.Melee--; }
-        else if (buckets.Ranged > 0) { item.role = 'Ranged'; buckets.Ranged--; }
-        else { item.role = Math.random() > 0.5 ? 'Melee' : 'Ranged'; }
+        let p = item.player;
+        
+        // Check what DPS roles the player actually checked
+        let wantsMelee = p.preferredRoles.includes('Melee');
+        let wantsRanged = p.preferredRoles.includes('Ranged');
+        
+        // If they only selected Tank/Healer but those were full, we force them to flex both
+        if (!wantsMelee && !wantsRanged) {
+          wantsMelee = true;
+          wantsRanged = true;
+        }
+
+        // 1. Prioritize filling our mandatory minimums if a player is willing
+        if (buckets.Melee > 0 && wantsMelee) { 
+          item.role = 'Melee'; buckets.Melee--; 
+        } else if (buckets.Ranged > 0 && wantsRanged) { 
+          item.role = 'Ranged'; buckets.Ranged--; 
+        } else {
+          
+          let currentMelee = assignedRoles.filter(r => r.role === 'Melee').length;
+          let currentRanged = assignedRoles.filter(r => r.role === 'Ranged').length;
+
+          // If they strictly only want one type of DPS, respect it regardless of balance
+          if (wantsMelee && !wantsRanged) {
+            item.role = 'Melee';
+          } else if (wantsRanged && !wantsMelee) {
+            item.role = 'Ranged';
+          } else {
+            // 2. THE ELASTIC BALANCER
+            // Allow organic randomness, but step in if the gap hits 2
+            let diff = currentMelee - currentRanged;
+
+            if (diff >= 2) {
+              item.role = 'Ranged'; // Melee is pulling too far ahead, force Ranged
+            } else if (diff <= -2) {
+              item.role = 'Melee';  // Ranged is pulling too far ahead, force Melee
+            } else {
+              // The gap is small (0 or 1), let the wheel decide organically!
+              item.role = Math.random() > 0.5 ? 'Melee' : 'Ranged';
+            }
+          }
+        }
       }
     });
 
-    let finalComp = [];
-    let unrepresentedClasses = new Set([...new Set(allSpecs.map(s => s.class))]);
-    
-    // Sort roles to ensure Tanks/Healers get assigned first
     const rolePriority = { 'Tank': 1, 'Healer': 2, 'Ranged': 3, 'Melee': 4 };
     assignedRoles.sort((a, b) => rolePriority[a.role] - rolePriority[b.role]);
 
-    // --- 2. ASSIGN SPECS USING UNIFIED BUFFER & WEIGHT SYSTEM ---
+    // --- 4. ASSIGN SPECS USING DYNAMIC DECAY & WEIGHT TIERS ---
+    
+    // Missing this variable was causing the crash at 14 players!
+    let clampSize = Math.max(10, Math.min(players.length, 40));
+    let relaxRatio = (clampSize - 10) / 30; 
+
+    let decaySettings = {
+      DPS: { class: 0.10 + (0.50 * relaxRatio), spec: 0.05 + (0.35 * relaxRatio) },
+      Support: { class: 0.05 + (0.35 * relaxRatio), spec: 0.01 + (0.19 * relaxRatio) }
+    };
+
     assignedRoles.forEach((item, index) => {
       let validSpecs = allSpecs.filter(s => s.role === item.role);
       
-      // Calculate "Panic Mode" Buffer
-      // How many players left to assign minus how many unique classes we still need
       let remainingSlots = assignedRoles.length - index;
       let buffer = remainingSlots - unrepresentedClasses.size;
       let unusedClassSpecs = validSpecs.filter(s => unrepresentedClasses.has(s.class));
       
-      // If we are out of buffer space, we MUST force unrepresented classes to meet the 13-class quota
+      // If panic mode hits, we MUST pick a new class
       if (buffer <= 0 && unusedClassSpecs.length > 0) {
         validSpecs = unusedClassSpecs;
       }
 
-      // Calculate weights for all valid specs
       let weightedSpecs = validSpecs.map(spec => {
         let isUnrepresented = unrepresentedClasses.has(spec.class);
-        let classCount = finalComp.filter(fc => fc.class === spec.class).length;
+        
+        // Count how many of this class are already playing THIS specific role
+        let roleClassCount = finalComp.filter(fc => fc.class === spec.class && fc.role === item.role).length;
         let specCount = finalComp.filter(fc => fc.spec === spec.spec).length;
 
         let weight = 0;
         if (isUnrepresented) {
-          weight = 100; // Base weight for grabbing new classes
+          weight = 100; // Tier 1: Brand new class
         } else {
-          // It's a duplicate! Apply exponential decay.
-          // Tanks and Healers get harsher penalties than DPS.
-          let classDecay = (item.role === 'Tank' || item.role === 'Healer') ? 0.15 : 0.25;
-          let specDecay = (item.role === 'Tank' || item.role === 'Healer') ? 0.05 : 0.10;
+          // Tier 2, 3, & 4: Duplicate logic
+          let isSupport = (item.role === 'Tank' || item.role === 'Healer');
+          let classDecay = isSupport ? decaySettings.Support.class : decaySettings.DPS.class;
+          let specDecay = isSupport ? decaySettings.Support.spec : decaySettings.DPS.spec;
 
-          let classWeight = Math.pow(classDecay, classCount);
+          let classWeight = Math.pow(classDecay, roleClassCount);
           let specWeight = Math.pow(specDecay, specCount);
           
-          weight = 100 * classWeight * specWeight;
+          weight = 20 * classWeight * specWeight;
         }
         return { spec, weight };
       });
 
-      // Spin the weighted random wheel
       let totalWeight = weightedSpecs.reduce((sum, s) => sum + s.weight, 0);
       let random = Math.random() * totalWeight;
       let chosenSpec;
@@ -416,7 +512,6 @@ async function generateComp() {
         random -= s.weight;
       }
       
-      // Safety fallback
       if (!chosenSpec) chosenSpec = weightedSpecs[0].spec;
       
       unrepresentedClasses.delete(chosenSpec.class);
@@ -426,13 +521,19 @@ async function generateComp() {
     const displayOrder = { 'Tank': 1, 'Healer': 2, 'Melee': 3, 'Ranged': 4 };
     finalComp.sort((a, b) => displayOrder[a.role] - displayOrder[b.role]);
 
-    // --- 3. THEATRICAL ANIMATION LOGIC ---
-    let displayComp = finalComp.map(p => ({
-      name: p.name, role: p.role, class: 'Rolling', spec: 'Rolling', icon: '', isRolling: true, justRevealed: false
-    }));
+    // --- 5. THEATRICAL ANIMATION LOGIC ---
+    let displayComp = finalComp.map(p => {
+      if (p.isLocked) {
+        return { name: p.name, role: p.role, class: p.class, spec: p.spec, icon: p.icon, isRolling: false, justRevealed: false };
+      } else {
+        return { name: p.name, role: p.role, class: 'Rolling', spec: 'Rolling', icon: '', isRolling: true, justRevealed: false };
+      }
+    });
+    
     renderResults(displayComp);
     
-    let indicesToReveal = shuffle(Array.from(Array(finalComp.length).keys()));
+    // Shuffle the indices to reveal, EXCLUDING people who are locked
+    let indicesToReveal = shuffle(Array.from(Array(finalComp.length).keys()).filter(i => !finalComp[i].isLocked));
 
     if (isFast) {
       for (let i of indicesToReveal) {
