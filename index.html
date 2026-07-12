@@ -405,22 +405,23 @@ async function generateComp() {
       }
     });
 
+    // Calculate the dynamic gap for the Elastic Balancer
+    // Math.floor(targetDps / 4) makes it scale, Math.max(2) sets the floor, Math.min(4) sets the ceiling.
+    let allowedGap = Math.min(4, Math.max(2, Math.floor(targetDps / 4)));
+
     // Resolve 'Flex' players with elastic balancing
     assignedRoles.forEach(item => {
       if (item.role === 'Flex') {
         let p = item.player;
         
-        // Check what DPS roles the player actually checked
         let wantsMelee = p.preferredRoles.includes('Melee');
         let wantsRanged = p.preferredRoles.includes('Ranged');
         
-        // If they only selected Tank/Healer but those were full, we force them to flex both
         if (!wantsMelee && !wantsRanged) {
           wantsMelee = true;
           wantsRanged = true;
         }
 
-        // 1. Prioritize filling our mandatory minimums if a player is willing
         if (buckets.Melee > 0 && wantsMelee) { 
           item.role = 'Melee'; buckets.Melee--; 
         } else if (buckets.Ranged > 0 && wantsRanged) { 
@@ -430,22 +431,20 @@ async function generateComp() {
           let currentMelee = assignedRoles.filter(r => r.role === 'Melee').length;
           let currentRanged = assignedRoles.filter(r => r.role === 'Ranged').length;
 
-          // If they strictly only want one type of DPS, respect it regardless of balance
           if (wantsMelee && !wantsRanged) {
             item.role = 'Melee';
           } else if (wantsRanged && !wantsMelee) {
             item.role = 'Ranged';
           } else {
-            // 2. THE ELASTIC BALANCER
-            // Allow organic randomness, but step in if the gap hits 2
+            // THE DYNAMIC ELASTIC BALANCER
             let diff = currentMelee - currentRanged;
 
-            if (diff >= 2) {
-              item.role = 'Ranged'; // Melee is pulling too far ahead, force Ranged
-            } else if (diff <= -2) {
-              item.role = 'Melee';  // Ranged is pulling too far ahead, force Melee
+            if (diff >= allowedGap) {
+              item.role = 'Ranged'; // Melee is at the allowed gap, force Ranged
+            } else if (diff <= -allowedGap) {
+              item.role = 'Melee';  // Ranged is at the allowed gap, force Melee
             } else {
-              // The gap is small (0 or 1), let the wheel decide organically!
+              // The gap is within the safe zone, let the wheel decide organically!
               item.role = Math.random() > 0.5 ? 'Melee' : 'Ranged';
             }
           }
